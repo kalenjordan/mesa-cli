@@ -141,6 +141,14 @@ switch (cmd) {
     );
     break;
 
+  case 'watch-remote':
+    watchRemote(dir)
+
+    setInterval(function() {      
+      watchRemote(dir)
+    }, 3000);
+    break;
+  
   case 'pull':
     download(files);
     break;
@@ -292,6 +300,36 @@ switch (cmd) {
     console.log('  -n, --number [value] : Number.');
     console.log('  -v, --verbose : Verbose: Show log metadata.');
     console.log('');
+}
+
+function watchRemote(dir) {
+  let filepath = dir + "/mesa.json";  
+  let localMirrorPath = filepath + ".remote";
+  let automationKey = getAutomationKey(filepath);
+
+  request('GET', `automations/${automationKey}.json`, {}, function(
+    response,
+    data
+  ) {
+    if (response.config) {
+      const remoteContents = JSON.stringify(response, null, 2);
+      if (!fs.existsSync(localMirrorPath)) {
+        // console.log("Writing local mirror mesa json: " + localMirrorPath);
+        fs.writeFileSync(localMirrorPath, remoteContents);
+        return;
+      } else {
+        // console.log("Remote mirror json exists: " + localMirrorPath);
+        let localMirrorContents = fs.readFileSync(localMirrorPath, 'utf8');
+        if (remoteContents == localMirrorContents) {
+          // console.log("Remote json is the same as local mirror");
+        } else {
+          console.log("Remote automation JSON changed - writing to: " + filepath);
+          fs.writeFileSync(filepath, remoteContents);
+          fs.writeFileSync(localMirrorPath, remoteContents);
+        }
+      }
+    }
+  });
 }
 
 /**
@@ -455,7 +493,8 @@ function request(method, endpoint, data, cb) {
       if (cb) {
         cb(response.data);
       }
-      console.log(`Success: ${options.method} ${options.url}`);
+      // Commenting this out because watch-remote will output it every 3 seconds
+      // console.log(`Success: ${options.method} ${options.url}`);
     })
     .catch(function(error) {
       //console.log(error.response.data);
