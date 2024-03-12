@@ -141,7 +141,36 @@ switch (cmd) {
     );
     break;
 
-  case 'watch-remote':
+  case 'sync':
+    program.force = 1;
+    var watch = require('watch');
+
+    let filepath = dir + "/mesa.json";  
+    if (!fs.existsSync(filepath)) {
+      console.log("Initial Workflow Export");
+      runExport();
+    }    
+
+    watch.watchTree(
+      dir,
+      {
+        filter: function(filename) {
+          // Exclude node_modules, only look for .js and .md files
+          return filename.indexOf(/node_modules|.git/) === -1;
+        }
+      },
+      function(filepath, curr, prev) {
+        // Ignore the initial index of all files
+        if (typeof filepath === 'object') {
+          return;
+        }
+        console.log(filepath);
+        if (filepath.indexOf('.js')) {
+          upload(filepath);
+        }
+      }
+    );
+    
     watchRemote(dir)
 
     setInterval(function() {      
@@ -154,29 +183,7 @@ switch (cmd) {
     break;
 
   case 'export':
-    // In this instance, `files` is the template name
-    if (files == []) {
-      return console.log('ERROR', 'No template specified');
-    }
-
-    files.forEach(function(automation) {
-      // Get mesa.json
-      // {{url}}/admin/{{uuid}}/automations/{{automation_key}}.json
-      request('GET', `automations/${automation}.json`, {}, function(
-        response,
-        data
-      ) {
-        if (response.config) {
-          const strMesa = JSON.stringify(response, null, 2);
-          console.log('Writing configuration to mesa.json');
-          // console.log(strMesa);
-          fs.writeFileSync('mesa.json', strMesa);
-
-          // Download and save scripts
-          download('all', automation);
-        }
-      });
-    });
+    runExport();    
     break;
 
   case 'install':
@@ -300,6 +307,32 @@ switch (cmd) {
     console.log('  -n, --number [value] : Number.');
     console.log('  -v, --verbose : Verbose: Show log metadata.');
     console.log('');
+}
+
+function runExport() {
+  // In this instance, `files` is the template name
+  if (files == []) {
+    return console.log('ERROR', 'No template specified');
+  }
+
+  files.forEach(function(automation) {
+    // Get mesa.json
+    // {{url}}/admin/{{uuid}}/automations/{{automation_key}}.json
+    request('GET', `automations/${automation}.json`, {}, function(
+      response,
+      data
+    ) {
+      if (response.config) {
+        const strMesa = JSON.stringify(response, null, 2);
+        console.log('Writing configuration to mesa.json');
+        // console.log(strMesa);
+        fs.writeFileSync('mesa.json', strMesa);
+
+        // Download and save scripts
+        download('all', automation);
+      }
+    });
+  });
 }
 
 function watchRemote(dir) {
