@@ -142,15 +142,23 @@ switch (cmd) {
     break;
 
   case 'sync':
-    program.force = 1;
-    var watch = require('watch');
+    let filepath = dir + "/mesa.json";
 
-    let filepath = dir + "/mesa.json";  
+    // Turns /mesa-templates/etsy/product/pull_inventory_from_shopify into etsy_product_pull_inventory_from_shopify
+    let parts = dir.split('/');
+    let automationKeyForSync = parts[parts.length - 3] + "_" + parts[parts.length - 2] + "_" + parts[parts.length - 1]
+
+    // This makes it so that it's as if the export command was called with the automation key passed in
+    let files = [automationKeyForSync];
+    console.log("Checking to see if mesa.json file exists: " + filepath);
     if (!fs.existsSync(filepath)) {
-      console.log("Initial Workflow Export");
-      runExport();
+      console.log("Initial Workflow Export - run sync again when this is done");
+      runExport(files);
+      break;
     }    
 
+    program.force = 1;
+    var watch = require('watch');
     watch.watchTree(
       dir,
       {
@@ -183,7 +191,7 @@ switch (cmd) {
     break;
 
   case 'export':
-    runExport();    
+    runExport(files);    
     break;
 
   case 'install':
@@ -309,7 +317,7 @@ switch (cmd) {
     console.log('');
 }
 
-function runExport() {
+function runExport(files) {  
   // In this instance, `files` is the template name
   if (files == []) {
     return console.log('ERROR', 'No template specified');
