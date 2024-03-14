@@ -119,6 +119,8 @@ switch (cmd) {
 
   case 'watch':
     var watch = require('watch');
+    let timestamp = (new Date()).toLocaleDateString() + " " + (new Date()).toLocaleTimeString();
+    console.log(`${timestamp}: Watching ${dir}`);
 
     watch.watchTree(
       dir,
@@ -390,7 +392,8 @@ function upload(filepath, cb) {
 
   // @todo: do we want to allow uploading of .md files? if (extension === '.md' || extension === '.js') {
   if (extension === '.js') {
-    console.log(`Uploading ${filename} as ${filename}...`);
+    let timestamp = (new Date()).toLocaleDateString() + " " + (new Date()).toLocaleTimeString();
+    console.log(`${timestamp}: Uploading ${filename} as ${filename}...`);
     const automation = getAutomationKey(filepath);
 
     request('POST', `${automation}/scripts.json`, {
