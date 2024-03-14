@@ -33,13 +33,13 @@ env = env ? env : process.env.ENV;
 let config;
 try {
   config = require('config-yml').load(env);
-  console.log('Loaded shop config from: Local config');
+  // console.log('Loaded shop config from: Local config');
 } catch (e) {
   try {
     process.chdir(`${process.env.HOME}/.mesa`);
     config = require('config-yml').load(env);
     process.chdir(dir);
-    console.log('Loaded shop config from: Global config in ~/.mesa');
+    // console.log('Loaded shop config from: Global config in ~/.mesa');
   } catch (e) {
     console.log(e);
     const configFile = env ? env : 'config';
@@ -53,9 +53,9 @@ if (!config.uuid && cmd) {
 }
 
 // const dir = process.env.INIT_CWD;
-console.log(`Working directory: ${dir}`);
-console.log(`Store: ${config.uuid}.myshopify.com`);
-console.log('');
+//console.log(`Working directory: ${dir}`);
+//console.log(`Store: ${config.uuid}.myshopify.com`);
+//console.log('');
 
 // Read mesa.json
 let mesa;
@@ -126,7 +126,6 @@ switch (cmd) {
       dir,
       {
         filter: function(filename) {
-          // Exclude node_modules, only look for .js and .md files
           return filename.indexOf(/node_modules|.git/) === -1;
         }
       },
@@ -141,6 +140,32 @@ switch (cmd) {
         }
       }
     );
+
+    let parts = dir.split('mesa-templates');
+    let utilsDir = parts[0] + 'workflows/_template-utils';
+
+    console.log(`${timestamp}: Watching ${utilsDir}`);
+    watch.watchTree(utilsDir, 
+      {
+        filter: function(filename) {
+          return filename.indexOf(/node_modules|.git/) === -1;
+        }
+      },
+      function(filepath, curr, prev) {
+        // Ignore the initial index of all files
+        if (typeof filepath === 'object') {
+          return;
+        }
+        if (filepath.indexOf('.js')) {
+          let filename = path.parse(filepath).base;
+          let destination = dir + '/' + filename;
+          console.log(`Copying ${filepath} to ${destination}`);
+          fs.copyFile(filepath, destination, () => {
+            // Copy done - this callback function is required
+          });
+        }
+      });
+
     break;
 
   case 'sync':
