@@ -353,10 +353,10 @@ function runExport(files) {
       data
     ) {
       if (response.config) {
-        const strMesa = JSON.stringify(response, null, 2);
+        let mesaJsonString = JSON.stringify(response, null, 2);
         console.log('Writing configuration to mesa.json');
-        // console.log(strMesa);
-        fs.writeFileSync('mesa.json', strMesa);
+        mesaJsonString = preprocessMesaJsonForExport(mesaJsonString)
+        fs.writeFileSync('mesa.json',mesaJsonString);
 
         // Download and save scripts
         download('all', automation);
@@ -365,11 +365,24 @@ function runExport(files) {
   });
 }
 
+function preprocessMesaJsonForExport(mesaJsonString) {
+  console.log(dir);
+  let directoryParts = dir.split('/');
+  if (directoryParts.includes('mesa-templates')) {
+    let mesaJson = JSON.parse(mesaJsonString);
+    let keyParts = mesaJson.key.split('_');    
+    mesaJson.key = keyParts[0] + '/' + keyParts[1] + '/' + keyParts.slice(2).join('_');directoryParts
+    mesaJsonString = JSON.stringify(mesaJson, null, 2);
+  }
+
+  return mesaJsonString;
+}
+
   // Turns /mesa-templates/etsy/product/pull_inventory_from_shopify into etsy_product_pull_inventory_from_shopify
 function getAutomationKeyFromWorkingDirectory() {
   let parts = dir.split('/');
-  let automationKeyForSync = parts[parts.length - 3] + "_" + parts[parts.length - 2] + "_" + parts[parts.length - 1];
-  return automationKeyForSync;
+  let automationKey = parts[parts.length - 3] + "_" + parts[parts.length - 2] + "_" + parts[parts.length - 1];
+  return automationKey;
 }
 
 function watchRemote(dir) {
