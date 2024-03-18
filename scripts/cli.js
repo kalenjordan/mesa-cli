@@ -14,6 +14,7 @@ const dir = sh.pwd().stdout;
 function list(val) {
   return val.split(',');
 }
+
 program
   .version('2.0.6')
   .usage('[options] <file ...>')
@@ -53,8 +54,9 @@ if (!config.uuid && cmd) {
 }
 
 // const dir = process.env.INIT_CWD;
-//console.log(`Working directory: ${dir}`);
-//console.log(`Store: ${config.uuid}.myshopify.com`);
+program.verbose ? console.log(`Verbose Output Enabled`) : null;
+program.verbose ? console.log(`Store: ${config.uuid}.myshopify.com`) : null;
+program.verbose ? console.log(`Working directory: ${dir}`) : null;
 //console.log('');
 
 // Read mesa.json
@@ -90,16 +92,19 @@ switch (cmd) {
         files.forEach(function(filename) {
           const filepath = `${dir}/${filename}`;
           if (filename.indexOf('mesa.json') === -1) {
+            console.log(`${timestamp()}: Uploading ${filepath}`);
             upload(filepath);
             sleep(500);
           }
         });
         // Make sure all of the script uploads have time to finish
+        /*
         console.log('Sleeping for 5 seconds before setting mesa.json');
         setTimeout(function() {
           console.log('Setting mesa.json');
           upload(mesa);
         }, 5000);
+        */
       });
     }
     // Just upload the files
@@ -117,8 +122,17 @@ switch (cmd) {
 
     break;
 
-  case 'watch':
+  case 'push-mesa-json':
+    program.force = true;
+    mesaJsonPath = `${dir}/mesa.json`;
+    logWithTimestamp(": Uploading " + mesaJsonPath);
+    upload(mesaJsonPath);
+
+    break;
+
+  case 'watch-custom-code':
     var watch = require('watch');
+    program.force = 1;
     let timestamp = (new Date()).toLocaleDateString() + " " + (new Date()).toLocaleTimeString();
     console.log(`${timestamp}: Watching ${dir}`);
 
@@ -134,15 +148,15 @@ switch (cmd) {
         if (typeof filepath === 'object') {
           return;
         }
-        console.log(filepath);
-        if (filepath.indexOf('.js')) {
+        if (filepath.slice(-3) == '.js') {          
+          logWithTimestamp(`Found file change: ${path.parse(filepath).base}`);
           upload(filepath);
         }
       }
     );
 
     let parts = dir.split('mesa-templates');
-    let utilsDir = parts[0] + 'workflows/_template-utils';
+    let utilsDir = parts[0] + 'workflows/template-utils';
 
     console.log(`${timestamp}: Watching ${utilsDir}`);
     watch.watchTree(utilsDir, 
@@ -365,6 +379,11 @@ function runExport(files) {
   });
 }
 
+function logWithTimestamp(message) {
+  let timestamp = (new Date()).toLocaleDateString() + " " + (new Date()).toLocaleTimeString();
+  console.log(timestamp + ": " + message);
+}
+
 function preprocessMesaJsonForExport(mesaJsonString) {
   console.log(dir);
   let directoryParts = dir.split('/');
@@ -429,9 +448,7 @@ function upload(filepath, cb) {
   let contents = fs.readFileSync(filepath, 'utf8');
 
   // @todo: do we want to allow uploading of .md files? if (extension === '.md' || extension === '.js') {
-  if (extension === '.js') {
-    let timestamp = (new Date()).toLocaleDateString() + " " + (new Date()).toLocaleTimeString();
-    console.log(`${timestamp}: Uploading ${filename} as ${filename}...`);
+  if (extension === '.js') {    
     const automation = getAutomationKey(filepath);
 
     request('POST', `${automation}/scripts.json`, {
@@ -457,13 +474,18 @@ function upload(filepath, cb) {
         'Mesa.json did not contain any config elements. Skipping.'
       );
     }
-    console.log('Importing configuration from mesa.json...');
+    program.verbose ? console.log('Importing configuration from mesa.json...') : null;
     const force = program.force ? '?force=1' : '';
+    
+    program.verbose ? console.log('Force: ' + force) : null;
+    
     request('POST', `automations.json${force}`, contents, function(data) {
       console.log('');
       if (data.log) {
-        console.log(`Log from mesa.json import of automation ${contents.key}:`);
-        console.log(data.log);
+        if (program.verbose) {
+          console.log(`Log from mesa.json import of automation ${contents.key}:`);
+          console.log(data.log);  
+        }
       } else {
         console.log('There was a problem importing the mesa.json file:');
         console.log(data);
@@ -570,6 +592,10 @@ function request(method, endpoint, data, cb) {
   };
   if (method !== 'GET' && data) {
     options.data = data;
+  }
+
+  if (program.verbose) {
+    console.log("Request options: ", options);
   }
 
   axios(options)
