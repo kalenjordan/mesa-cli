@@ -31,16 +31,21 @@ let [cmd, ...files] = program.args;
 // Load config from config.yml
 let env = program.env ? program.env : null;
 env = env ? env : process.env.ENV;
+if (!env) {
+  env = 'kalen-jordan-dev';
+}
+program.verbose ? console.log("Env: " + env) : null;
+
 let config;
 try {
   config = require('config-yml').load(env);
-  // console.log('Loaded shop config from: Local config');
+  program.verbose ? console.log("Loaded shop config from: Local config") : null;
 } catch (e) {
   try {
     process.chdir(`${process.env.HOME}/.mesa`);
     config = require('config-yml').load(env);
     process.chdir(dir);
-    // console.log('Loaded shop config from: Global config in ~/.mesa');
+    program.verbose ? console.log("Loaded shop config from: Global config in ~/.mesa") : null;
   } catch (e) {
     console.log(e);
     const configFile = env ? env : 'config';
@@ -92,19 +97,17 @@ switch (cmd) {
         files.forEach(function(filename) {
           const filepath = `${dir}/${filename}`;
           if (filename.indexOf('mesa.json') === -1) {
-            console.log(`${timestamp()}: Uploading ${filepath}`);
+            logWithTimestamp(`Uploading ${filepath}`);
             upload(filepath);
             sleep(500);
           }
         });
         // Make sure all of the script uploads have time to finish
-        /*
         console.log('Sleeping for 5 seconds before setting mesa.json');
         setTimeout(function() {
           console.log('Setting mesa.json');
           upload(mesa);
         }, 5000);
-        */
       });
     }
     // Just upload the files
@@ -391,6 +394,11 @@ function preprocessMesaJsonForExport(mesaJsonString) {
     let mesaJson = JSON.parse(mesaJsonString);
     let keyParts = mesaJson.key.split('_');    
     mesaJson.key = keyParts[0] + '/' + keyParts[1] + '/' + keyParts.slice(2).join('_');directoryParts
+
+    if (mesaJson.config.storage) {
+      delete mesaJson.config.storage;
+    }  
+
     mesaJsonString = JSON.stringify(mesaJson, null, 2);
   }
 
