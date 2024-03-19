@@ -58,9 +58,9 @@ if (!config.uuid && cmd) {
   return console.log('UUID not specified in config.yml. Exiting.');
 }
 
+console.log(`Store: ${config.uuid}.myshopify.com`);
 // const dir = process.env.INIT_CWD;
 program.verbose ? console.log(`Verbose Output Enabled`) : null;
-program.verbose ? console.log(`Store: ${config.uuid}.myshopify.com`) : null;
 program.verbose ? console.log(`Working directory: ${dir}`) : null;
 //console.log('');
 
@@ -392,8 +392,7 @@ function preprocessMesaJsonForExport(mesaJsonString) {
   let directoryParts = dir.split('/');
   if (directoryParts.includes('mesa-templates')) {
     let mesaJson = JSON.parse(mesaJsonString);
-    let keyParts = mesaJson.key.split('_');    
-    mesaJson.key = keyParts[0] + '/' + keyParts[1] + '/' + keyParts.slice(2).join('_');directoryParts
+    mesaJson.key = getAutomationKeyFromWorkingDirectoryWithSlashes();
 
     if (mesaJson.config.storage) {
       delete mesaJson.config.storage;
@@ -408,7 +407,34 @@ function preprocessMesaJsonForExport(mesaJsonString) {
   // Turns /mesa-templates/etsy/product/pull_inventory_from_shopify into etsy_product_pull_inventory_from_shopify
 function getAutomationKeyFromWorkingDirectory() {
   let parts = dir.split('/');
-  let automationKey = parts[parts.length - 3] + "_" + parts[parts.length - 2] + "_" + parts[parts.length - 1];
+  let automationKey = null;
+
+  if (parts.includes('mesa-templates')) {
+    parts = parts.slice(parts.indexOf('mesa-templates') + 1);
+    automationKey = parts.join('_');
+  } else {
+    automationKey = parts[parts.length - 3] + "_" + parts[parts.length - 2] + "_" + parts[parts.length - 1];
+  }
+
+  program.verbose ? console.log("getAutomationKeyFromWorkingDirectory() dir: " + dir) : null;
+  program.verbose ? console.log("getAutomationKeyFromWorkingDirectory() key: " + automationKey) : null;
+  return automationKey;
+}
+
+function getAutomationKeyFromWorkingDirectoryWithSlashes() {
+  let parts = dir.split('/');
+  let automationKey = null;
+  
+  if (parts.includes('mesa-templates')) {
+    parts = parts.slice(parts.indexOf('mesa-templates') + 1);
+    automationKey = parts.join('/');
+  } else {
+    console.log('ERROR'); 
+    exit;
+  }
+
+  program.verbose ? console.log("getAutomationKeyFromWorkingDirectoryWithSlashes() dir: " + dir) : null;
+  program.verbose ? console.log("getAutomationKeyFromWorkingDirectoryWithSlashes() key: " + automationKey) : null;
   return automationKey;
 }
 
