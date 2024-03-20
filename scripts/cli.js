@@ -28,12 +28,25 @@ program
 
 let [cmd, ...files] = program.args;
 
-// Load config from config.yml
-let env = program.env ? program.env : null;
-env = env ? env : process.env.ENV;
-if (!env) {
-  env = 'kalen-jordan-dev';
+program.verbose ? console.log(`Working directory: ${dir}`) : null;
+
+function loadEnv() {
+  if (program.env) {
+    return program.env;
+  }
+
+  let parts = dir.split('/');
+  if (parts.includes('clients')) {
+    let clientName = parts[parts.indexOf('clients') + 1];
+    console.log("client name: " + clientName);
+    return clientName;
+  }
+
+  return null;
 }
+
+let env = loadEnv();
+
 program.verbose ? console.log("Env: " + env) : null;
 
 let config;
@@ -61,7 +74,6 @@ if (!config.uuid && cmd) {
 console.log(`Store: ${config.uuid}.myshopify.com`);
 // const dir = process.env.INIT_CWD;
 program.verbose ? console.log(`Verbose Output Enabled`) : null;
-program.verbose ? console.log(`Working directory: ${dir}`) : null;
 //console.log('');
 
 // Read mesa.json
@@ -411,6 +423,9 @@ function getAutomationKeyFromWorkingDirectory() {
 
   if (parts.includes('mesa-templates')) {
     parts = parts.slice(parts.indexOf('mesa-templates') + 1);
+    automationKey = parts.join('_');
+  } else if (parts.includes('clients')) {
+    parts = parts.slice(parts.indexOf('clients') + 1);
     automationKey = parts.join('_');
   } else {
     automationKey = parts[parts.length - 3] + "_" + parts[parts.length - 2] + "_" + parts[parts.length - 1];
