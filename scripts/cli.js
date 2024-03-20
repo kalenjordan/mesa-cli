@@ -36,10 +36,9 @@ function loadEnv() {
   }
 
   let parts = dir.split('/');
-  if (parts.includes('clients')) {
-    let clientName = parts[parts.indexOf('clients') + 1];
-    console.log("client name: " + clientName);
-    return clientName;
+  if (parts.includes('accounts')) {
+    let accountName = parts[parts.indexOf('accounts') + 1];
+    return accountName;
   }
 
   return null;
@@ -248,7 +247,11 @@ switch (cmd) {
     runExport(files);    
     break;
 
-  case 'install':
+  case 'export-all':
+    runExportAll(files);    
+    break;
+  
+    case 'install':
     // In this instance, `files` is the template name
     if (files == []) {
       return console.log('ERROR', 'No template specified');
@@ -371,6 +374,58 @@ switch (cmd) {
     console.log('');
 }
 
+function runExportAll(files) {
+  let parts = dir.split('/');
+  if (! parts.includes('accounts')) {
+    console.log('ERROR: not in an account directory');
+    return;
+  }
+
+  if (! program.number) {
+    console.log("Error: Pass in a max number (--number)");
+    return;
+  }
+
+  let accountDir = dir;
+
+  console.log('');
+  request('GET', `automations.json`, {}, function(response, data) {
+    let automations = response.automations.slice(0, program.number);
+    for (let automation of automations) {
+      let automationKey = automation.key;
+
+      // It looks at the parent directory of the file so I have to pass in the mesa.json piece
+      createDirectories(dir + '/' + automationKey + '/mesa.json');
+      process.chdir(dir + '/' + automationKey);
+
+      automationKey = getAutomationKeyFromWorkingDirectory();
+      request('GET', `automations/${automationKey}.json`, {}, function(response, data) {
+        let mesaJsonString = JSON.stringify(response, null, 4);
+        mesaJsonString = preprocessMesaJsonForExport(mesaJsonString)
+
+        process.chdir(dir + '/' + automationKey); 
+        console.log(pad(automationKey, 80) + "Saving mesa.json \n");
+        fs.writeFileSync('mesa.json',mesaJsonString);
+
+        request('GET', `${automationKey}/scripts.json`, {}, function(response, data) {
+          response.scripts.forEach(function(item) {
+            process.chdir(accountDir + '/' + automationKey); 
+            const filename = item.filename;
+            console.log(pad(automationKey, 80) + "Saving " + filename);
+            fs.writeFileSync(filename, item.code);
+          });
+          console.log('');
+        });
+      });  
+    }
+  });
+}
+
+function pad(str, width) {
+  var len = Math.max(0, width - str.length);
+  return str + Array(len + 1).join(' ');
+}
+
 function runExport(files) {  
   automationKeys = (files.length == 0) ? [getAutomationKeyFromWorkingDirectory()] : files;
 
@@ -382,8 +437,7 @@ function runExport(files) {
       data
     ) {
       if (response.config) {
-        let mesaJsonString = JSON.stringify(response, null, 2);
-        console.log('Writing configuration to mesa.json');
+        let mesaJsonString = JSON.stringify(response, null, 4);
         mesaJsonString = preprocessMesaJsonForExport(mesaJsonString)
         fs.writeFileSync('mesa.json',mesaJsonString);
 
@@ -400,7 +454,6 @@ function logWithTimestamp(message) {
 }
 
 function preprocessMesaJsonForExport(mesaJsonString) {
-  console.log(dir);
   let directoryParts = dir.split('/');
   if (directoryParts.includes('mesa-templates')) {
     let mesaJson = JSON.parse(mesaJsonString);
@@ -410,7 +463,7 @@ function preprocessMesaJsonForExport(mesaJsonString) {
       delete mesaJson.config.storage;
     }  
 
-    mesaJsonString = JSON.stringify(mesaJson, null, 2);
+    mesaJsonString = JSON.stringify(mesaJson, null, 4);
   }
 
   return mesaJsonString;
@@ -418,20 +471,20 @@ function preprocessMesaJsonForExport(mesaJsonString) {
 
   // Turns /mesa-templates/etsy/product/pull_inventory_from_shopify into etsy_product_pull_inventory_from_shopify
 function getAutomationKeyFromWorkingDirectory() {
-  let parts = dir.split('/');
+  let parts = process.cwd().split('/');
   let automationKey = null;
 
   if (parts.includes('mesa-templates')) {
     parts = parts.slice(parts.indexOf('mesa-templates') + 1);
     automationKey = parts.join('_');
-  } else if (parts.includes('clients')) {
-    parts = parts.slice(parts.indexOf('clients') + 1);
+  } else if (parts.includes('accounts')) {
+    parts = parts.slice(parts.indexOf('accounts') + 2);
     automationKey = parts.join('_');
   } else {
     automationKey = parts[parts.length - 3] + "_" + parts[parts.length - 2] + "_" + parts[parts.length - 1];
   }
 
-  program.verbose ? console.log("getAutomationKeyFromWorkingDirectory() dir: " + dir) : null;
+  program.verbose ? console.log("getAutomationKeyFromWorkingDirectory() dir: " + process.cwd()) : null;
   program.verbose ? console.log("getAutomationKeyFromWorkingDirectory() key: " + automationKey) : null;
   return automationKey;
 }
@@ -463,7 +516,7 @@ function watchRemote(dir) {
     data
   ) {
     if (response.config) {
-      const remoteContents = JSON.stringify(response, null, 2);
+      const remoteContents = JSON.stringify(response, null, 4);
       if (!fs.existsSync(localMirrorPath)) {
         // console.log("Writing local mirror mesa json: " + localMirrorPath);
         fs.writeFileSync(localMirrorPath, remoteContents);
