@@ -391,6 +391,8 @@ function runExportAll(files) {
   console.log('');
   request('GET', `automations.json`, {}, function(response, data) {
     let automations = response.automations.slice(0, program.number);
+    console.log("Exporting " + automations.length + " workflows");
+
     for (let automation of automations) {
       let automationKey = automation.key;
 
