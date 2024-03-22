@@ -196,6 +196,28 @@ switch (cmd) {
 
     break;
   
+  case 'add-step':
+    console.log(pad("Adding step:", 22) + files);  
+
+    let stepName = files;
+    let baseUrl = 'https://raw.githubusercontent.com/kalenjordan/mesa-template-utils/master/code-templates';
+    let configUrl = baseUrl + `/${stepName}/step.json`;
+    let codeUrl = baseUrl + `/${stepName}/code.js`;
+
+    fetch(configUrl).then(response => {
+      return response.json();
+    }).then(data => {
+      console.log(data)
+    });
+
+    fetch(codeUrl).then(response => {
+      return response.text();
+    }).then(data => {
+      console.log(data)
+    });
+
+    break;
+
   case 'pull':
     download(files);
     break;
@@ -434,7 +456,6 @@ function preprocessMesaJsonForExport(mesaJsonString) {
 
     let templateVariables = getTemplateVariables(mesaJson.key);
     if (templateVariables) {
-      console.log("do stuff with template variables");
       mesaJson = injectTemplateVariables(mesaJson, templateVariables);
     }
 
@@ -446,7 +467,6 @@ function preprocessMesaJsonForExport(mesaJsonString) {
 
 function getTemplateVariables(locationAutomationKey) {
   let filepath = process.cwd() + '/template_variables.json';
-  console.log(filepath);
   if (!fs.existsSync(filepath)) {
     return null;
   }
@@ -459,10 +479,7 @@ function getTemplateVariables(locationAutomationKey) {
 
 function injectTemplateVariables(mesaObject, templateVariables) {
   for (let templateVariable of templateVariables) {
-    console.log("templateVariable.key: " + templateVariable.key);
     let step = mesaObject.config.outputs.find(object => object.key == templateVariable.key);
-    // console.log(mesaObject.config.outputs);
-    console.log("step: ", step);
 
     // Splits i.e. metadata.message into parts
     let parts = templateVariable.field.split('.'); 
