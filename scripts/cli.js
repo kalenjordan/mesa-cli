@@ -432,13 +432,55 @@ function preprocessMesaJsonForExport(mesaJsonString) {
       delete mesaJson.config.storage;
     }  
 
+    let templateVariables = getTemplateVariables(mesaJson.key);
+    if (templateVariables) {
+      console.log("do stuff with template variables");
+      mesaJson = injectTemplateVariables(mesaJson, templateVariables);
+    }
+
     mesaJsonString = JSON.stringify(mesaJson, null, 4);
   }
 
   return mesaJsonString;
 }
 
-  // Turns /mesa-templates/etsy/product/pull_inventory_from_shopify into etsy_product_pull_inventory_from_shopify
+function getTemplateVariables(locationAutomationKey) {
+  let filepath = process.cwd() + '/template_variables.json';
+  console.log(filepath);
+  if (!fs.existsSync(filepath)) {
+    return null;
+  }
+
+  let contents = fs.readFileSync(filepath, 'utf8');
+  let templateVariables = JSON.parse(contents);
+
+  return templateVariables;
+}
+
+function injectTemplateVariables(mesaObject, templateVariables) {
+  for (let templateVariable of templateVariables) {
+    console.log("templateVariable.key: " + templateVariable.key);
+    let step = mesaObject.config.outputs.find(object => object.key == templateVariable.key);
+    // console.log(mesaObject.config.outputs);
+    console.log("step: ", step);
+
+    // Splits i.e. metadata.message into parts
+    let parts = templateVariable.field.split('.'); 
+
+    if (parts.length == 1) {
+      step[parts[0]] = templateVariable.value;
+    } else if (parts.length == 2) {
+      step[parts[0]][parts[1]] = templateVariable.value;
+    } else {
+      console.log("injectTemplateVariables Error: didn't parse field: " + templateVariable.field);
+      process.exit();
+    }
+  }
+
+  return mesaObject;
+}
+
+// Turns /mesa-templates/etsy/product/pull_inventory_from_shopify into etsy_product_pull_inventory_from_shopify
 function getRemoteAutomationKeyFromLocalWorkingDirectory() {
   let parts = process.cwd().split('/');
   let automationKey = null;
@@ -455,23 +497,6 @@ function getRemoteAutomationKeyFromLocalWorkingDirectory() {
 
   program.verbose ? console.log("getAutomationKeyFromWorkingDirectory() dir: " + process.cwd()) : null;
   program.verbose ? console.log("getAutomationKeyFromWorkingDirectory() key: " + automationKey) : null;
-  return automationKey;
-}
-
-function getAutomationKeyFromWorkingDirectoryWithSlashes() {
-  let parts = dir.split('/');
-  let automationKey = null;
-  
-  if (parts.includes('mesa-templates')) {
-    parts = parts.slice(parts.indexOf('mesa-templates') + 1);
-    automationKey = parts.join('/');
-  } else {
-    console.log('ERROR'); 
-    exit;
-  }
-
-  program.verbose ? console.log("getAutomationKeyFromWorkingDirectoryWithSlashes() dir: " + dir) : null;
-  program.verbose ? console.log("getAutomationKeyFromWorkingDirectoryWithSlashes() key: " + automationKey) : null;
   return automationKey;
 }
 
