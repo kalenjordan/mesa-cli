@@ -41,7 +41,7 @@ function loadEnv() {
     return accountName;
   }
 
-  return null;
+  return 'default';
 }
 
 let env = loadEnv();
@@ -70,7 +70,7 @@ if (!config.uuid && cmd) {
   return console.log('UUID not specified in config.yml. Exiting.');
 }
 
-console.log(`Store: ${config.uuid}.myshopify.com`);
+console.log(pad('Store:', 22) + config.uuid);
 // const dir = process.env.INIT_CWD;
 program.verbose ? console.log(`Verbose Output Enabled`) : null;
 //console.log('');
@@ -108,7 +108,7 @@ switch (cmd) {
         files.forEach(function(filename) {
           const filepath = `${dir}/${filename}`;
           if (filename.indexOf('mesa.json') === -1) {
-            logWithTimestamp(`Uploading ${filepath}`);
+            logWithTimestamp(`Uploading ${filename}`);
             upload(filepath);
             sleep(500);
           }
@@ -139,7 +139,7 @@ switch (cmd) {
   case 'push-mesa-json':
     program.force = true;
     mesaJsonPath = `${dir}/mesa.json`;
-    logWithTimestamp(": Uploading " + mesaJsonPath);
+    logWithTimestamp("Uploading mesa.json");
     upload(mesaJsonPath);
 
     break;
@@ -187,56 +187,13 @@ switch (cmd) {
         if (filepath.indexOf('.js')) {
           let filename = path.parse(filepath).base;
           let destination = dir + '/' + filename;
-          console.log(`Copying ${filepath} to ${destination}`);
+          logWithTimestamp(`Copying ${filename} to working directory`);
           fs.copyFile(filepath, destination, () => {
             // Copy done - this callback function is required
           });
         }
       });
 
-    break;
-
-  case 'sync':
-    let filepath = dir + "/mesa.json";
-
-    automationKeyForSync = getAutomationKeyFromWorkingDirectory();
-
-    // This makes it so that it's as if the export command was called with the automation key passed in
-    files = [automationKeyForSync];
-    console.log("Checking to see if mesa.json file exists: " + filepath);
-    if (!fs.existsSync(filepath)) {
-      console.log("Initial Workflow Export - run sync again when this is done");
-      runExport(files);
-      break;
-    }    
-
-    program.force = 1;
-    var watch = require('watch');
-    watch.watchTree(
-      dir,
-      {
-        filter: function(filename) {
-          // Exclude node_modules, only look for .js and .md files
-          return filename.indexOf(/node_modules|.git/) === -1;
-        }
-      },
-      function(filepath, curr, prev) {
-        // Ignore the initial index of all files
-        if (typeof filepath === 'object') {
-          return;
-        }
-        console.log(filepath);
-        if (filepath.indexOf('.js')) {
-          upload(filepath);
-        }
-      }
-    );
-    
-    watchRemote(dir)
-
-    setInterval(function() {      
-      watchRemote(dir)
-    }, 3000);
     break;
   
   case 'pull':
@@ -340,7 +297,7 @@ switch (cmd) {
         // Print details
         if (program.verbose && item.fields && item.fields.meta) {
           try {
-            console.log(JSON.stringify(JSON.parse(item.fields.meta), null, 2));
+            console.log(JSON.stringify(JSON.parse(item.fields.meta), null, 4));
           } catch (e) {
             console.log(item.fields.meta);
           }
@@ -429,25 +386,35 @@ function pad(str, width) {
 }
 
 function runExport(files) {  
-  automationKeys = (files.length == 0) ? [getAutomationKeyFromWorkingDirectory()] : files;
+  automationKey = (files.length == 0) ? getRemoteAutomationKeyFromLocalWorkingDirectory() : files.toString();
+  console.log(pad('Workflow: ', 22) + automationKey);
 
-  automationKeys.forEach(function(automation) {
-    // Get mesa.json
-    // {{url}}/admin/{{uuid}}/automations/{{automation_key}}.json
-    request('GET', `automations/${automation}.json`, {}, function(
-      response,
-      data
-    ) {
-      if (response.config) {
-        let mesaJsonString = JSON.stringify(response, null, 4);
-        mesaJsonString = preprocessMesaJsonForExport(mesaJsonString)
-        fs.writeFileSync('mesa.json',mesaJsonString);
+  let localDirectory = getLocalDirectoryFromRemoteAutomationKey(automationKey);
+  if (process.cwd() != localDirectory) {
+    // It looks at the parent directory of the file so I have to pass in the mesa.json piece
+    createDirectories(localDirectory + '/mesa.json');
 
-        // Download and save scripts
-        download('all', automation);
-      }
-    });
+    console.log("Changing directory to " + localDirectory);
+    process.chdir(localDirectory);
+  }
+
+  // Get mesa.json
+  // {{url}}/admin/{{uuid}}/automations/{{automation_key}}.json
+  request('GET', `automations/${automationKey}.json`, {}, function(
+    response,
+    data
+  ) {
+    if (response.config) {
+      let mesaJsonString = JSON.stringify(response, null, 4);
+      mesaJsonString = preprocessMesaJsonForExport(mesaJsonString)
+      fs.writeFileSync('mesa.json',mesaJsonString);
+      console.log(pad('Saved:', 22) + 'mesa.json');
+
+      // Download and save scripts
+      download('all', automationKey);
+    }
   });
+  
 }
 
 function logWithTimestamp(message) {
@@ -459,7 +426,7 @@ function preprocessMesaJsonForExport(mesaJsonString) {
   let directoryParts = dir.split('/');
   if (directoryParts.includes('mesa-templates')) {
     let mesaJson = JSON.parse(mesaJsonString);
-    mesaJson.key = getAutomationKeyFromWorkingDirectoryWithSlashes();
+    mesaJson.key = remoteToLocalAutomationKey(mesaJson.key);
 
     if (mesaJson.config.storage) {
       delete mesaJson.config.storage;
@@ -472,13 +439,13 @@ function preprocessMesaJsonForExport(mesaJsonString) {
 }
 
   // Turns /mesa-templates/etsy/product/pull_inventory_from_shopify into etsy_product_pull_inventory_from_shopify
-function getAutomationKeyFromWorkingDirectory() {
+function getRemoteAutomationKeyFromLocalWorkingDirectory() {
   let parts = process.cwd().split('/');
   let automationKey = null;
 
   if (parts.includes('mesa-templates')) {
     parts = parts.slice(parts.indexOf('mesa-templates') + 1);
-    automationKey = parts.join('_');
+    automationKey = parts.join('__');
   } else if (parts.includes('accounts')) {
     parts = parts.slice(parts.indexOf('accounts') + 2);
     automationKey = parts.join('_');
@@ -508,36 +475,6 @@ function getAutomationKeyFromWorkingDirectoryWithSlashes() {
   return automationKey;
 }
 
-function watchRemote(dir) {
-  let filepath = dir + "/mesa.json";  
-  let localMirrorPath = filepath + ".remote";
-  let automationKey = getAutomationKey(filepath);
-
-  request('GET', `automations/${automationKey}.json`, {}, function(
-    response,
-    data
-  ) {
-    if (response.config) {
-      const remoteContents = JSON.stringify(response, null, 4);
-      if (!fs.existsSync(localMirrorPath)) {
-        // console.log("Writing local mirror mesa json: " + localMirrorPath);
-        fs.writeFileSync(localMirrorPath, remoteContents);
-        return;
-      } else {
-        // console.log("Remote mirror json exists: " + localMirrorPath);
-        let localMirrorContents = fs.readFileSync(localMirrorPath, 'utf8');
-        if (remoteContents == localMirrorContents) {
-          // console.log("Remote json is the same as local mirror");
-        } else {
-          console.log("Remote automation JSON changed - writing to: " + filepath);
-          fs.writeFileSync(filepath, remoteContents);
-          fs.writeFileSync(localMirrorPath, remoteContents);
-        }
-      }
-    }
-  });
-}
-
 /**
  *
  * @param {string} filepath
@@ -553,7 +490,7 @@ function upload(filepath, cb) {
 
   // @todo: do we want to allow uploading of .md files? if (extension === '.md' || extension === '.js') {
   if (extension === '.js') {    
-    const automation = getAutomationKey(filepath);
+    const automation = getRemoteAutomationKey(filepath);
 
     request('POST', `${automation}/scripts.json`, {
       script: {
@@ -563,6 +500,8 @@ function upload(filepath, cb) {
     });
   } else if (filename.indexOf('mesa.json') !== -1) {
     contents = JSON.parse(contents);
+    contents.key = getRemoteAutomationKey();
+    
     try {
       const readme = fs.readFileSync(
         filepath.replace('mesa.json', 'README.md'),
@@ -613,6 +552,57 @@ function upload(filepath, cb) {
   }
 }
 
+/**
+ * Templates keys (shopify/order/do_stuff) map to actual workflow keys (shopify__order__do_stuff)
+ * Need to replace getAutomationKey() eventually
+ */
+function getRemoteAutomationKey(filepath) {
+  if (program.automation) {
+    return program.automation;
+  }
+
+  let mesa = fs.readFileSync(`${dir}/mesa.json`, 'utf8');
+
+  if (!mesa) {
+    return console.log('Could not find mesa.json file.');
+  }
+
+  mesa = JSON.parse(mesa);
+  if (!mesa.key) {
+    return console.log('Could not find key attribute in mesa.json file.');
+  }
+
+  let mesaKey = mesa.key;
+  mesaKey = mesaKey.replace(/\//g, '__');
+
+  return mesaKey;
+}
+
+/**
+ * Templates keys (shopify/order/do_stuff) map to actual workflow keys (shopify__order__do_stuff)
+ * Need to replace getAutomationKey() eventually
+ */
+function getLocalDirectoryFromRemoteAutomationKey(remoteAutomationKey) {
+  let dirParts = process.cwd().split('/');
+  if (dirParts.includes('mesa-templates')) {
+    let keyParts = remoteAutomationKey.split('__');
+
+    let baseDir = dirParts.slice(0, dirParts.indexOf('mesa-templates') + 1).join('/');
+    let localDir = baseDir + '/' + keyParts.join('/');
+
+    return localDir;
+  }
+
+  return process.cwd();
+}
+
+/**
+ * Turns shopify__order__do_stuff) into shopify/order/do_stuff for templates
+ */
+function remoteToLocalAutomationKey(remoteAutomationKey) {
+  return remoteAutomationKey.split('__').join('/');
+}
+
 function getAutomationKey(filepath) {
   if (program.automation) {
     return program.automation;
@@ -656,8 +646,8 @@ function download(files, automation) {
 
         createDirectories(filename);
 
-        console.log(`Saving ${filename} from automation ${automation}`);
         fs.writeFileSync(filename, item.code);
+        console.log(pad('Saved:', 22) + filename);
       }
     });
   });
