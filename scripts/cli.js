@@ -138,6 +138,7 @@ switch (cmd) {
 
   case 'push-mesa-json':
     program.force = true;
+    console.log(pad('Workflow: ', 22) + getRemoteAutomationKeyFromLocalWorkingDirectory());
     mesaJsonPath = `${dir}/mesa.json`;
     logWithTimestamp("Uploading mesa.json");
     upload(mesaJsonPath);
@@ -169,8 +170,14 @@ switch (cmd) {
       }
     );
 
-    let parts = dir.split('mesa-templates');
-    let utilsDir = parts[0] + 'workflows/template-utils';
+    let utilsDir = null;
+    if (dir.includes('mesa-templates')) {
+      let parts = dir.split('mesa-templates');
+      utilsDir = parts[0] + 'template-utils/classes';  
+    } else if (dir.includes('workflows')) {
+      let parts = dir.split('workflows');
+      utilsDir = parts[0] + 'template-utils/classes';  
+    }
 
     console.log(`${timestamp}: Watching ${utilsDir}`);
     watch.watchTree(utilsDir, 
@@ -187,7 +194,7 @@ switch (cmd) {
         if (filepath.indexOf('.js')) {
           let filename = path.parse(filepath).base;
           let destination = dir + '/' + filename;
-          logWithTimestamp(`Copying ${filename} to working directory`);
+          logWithTimestamp(`Copying ${filename} to ${destination}`);
           fs.copyFile(filepath, destination, () => {
             // Copy done - this callback function is required
           });
@@ -197,6 +204,8 @@ switch (cmd) {
     break;
   
   case 'add-step':
+    program.force = true;
+    console.log(pad('Workflow: ', 22) + getRemoteAutomationKeyFromLocalWorkingDirectory());
     console.log(pad("Adding step:", 22) + files);  
 
     let stepName = files;
@@ -204,16 +213,19 @@ switch (cmd) {
     let configUrl = baseUrl + `/${stepName}/step.json`;
     let codeUrl = baseUrl + `/${stepName}/code.js`;
 
+    // Need the step config loaded in order for addStepCode to know the name of the key it needs to use for
+    // the code contents. Then, need to upload the code first and in the upload callback, upload the mesa.json
+    // because it requires the script to be uploaded first.
     fetch(configUrl).then(response => {
       return response.json();
-    }).then(data => {
-      console.log(data)
-    });
-
-    fetch(codeUrl).then(response => {
-      return response.text();
-    }).then(data => {
-      console.log(data)
+    }).then(stepConfig => {
+      fetch(codeUrl).then(response => {
+        return response.text();
+      }).then(codeContents => {
+        addStepCode(stepName, stepConfig, codeContents, function(uploadResults) {
+          addStepConfig(stepName, stepConfig);
+        });
+      });
     });
 
     break;
@@ -353,6 +365,29 @@ switch (cmd) {
     console.log('');
 }
 
+function addStepConfig(stepName, stepConfig) {
+  let filepath = `${dir}/mesa.json`;
+  let workflowConfig = JSON.parse(fs.readFileSync(filepath, 'utf8'));
+
+  workflowConfig.config.outputs.push(stepConfig);
+  // console.log(workflowConfig.config.outputs);
+
+  logWithTimestamp("Uploading mesa.json");
+  fs.writeFileSync(filepath, JSON.stringify(workflowConfig, null, 4));
+  upload(filepath);  
+}
+
+function addStepCode(stepName, stepConfig, code, callback) {
+  // Load config and figure out what the key name is for stepConfig
+
+  let filepath = `${dir}/${stepName}.js`;
+  logWithTimestamp("Uploading " + filepath);
+  fs.writeFileSync(filepath, code);
+  upload(filepath, callback);  
+
+  // console.log(pad("Adding code:", 22) + "Not implemented yet");
+}
+
 function runExportAll(files) {
   let parts = dir.split('/');
   if (! parts.includes('accounts')) {
@@ -416,7 +451,7 @@ function runExport(files) {
     // It looks at the parent directory of the file so I have to pass in the mesa.json piece
     createDirectories(localDirectory + '/mesa.json');
 
-    console.log("Changing directory to " + localDirectory);
+    console.log(pad("Chdir:", 22) + localDirectory);
     process.chdir(localDirectory);
   }
 
@@ -454,9 +489,18 @@ function preprocessMesaJsonForExport(mesaJsonString) {
       delete mesaJson.config.storage;
     }  
 
-    let templateVariables = getTemplateVariables(mesaJson.key);
-    if (templateVariables) {
-      mesaJson = injectTemplateVariables(mesaJson, templateVariables);
+    let templateConfig = getTemplateConfig(mesaJson.key);
+    if (templateConfig && templateConfig.template_variables) {
+      mesaJson = injectTemplateVariables(mesaJson, templateConfig.template_variables);
+    }
+
+    if (templateConfig && templateConfig.setup) {
+      mesaJson.setup = templateConfig.setup;
+    }
+
+    if (mesaJson.config.inputs[0].metadata.next_sync_date_time) {
+      console.log(pad("Deleting hard coded:", 22) + "next_sync_date_time");
+      delete mesaJson.config.inputs[0].metadata.next_sync_date_time;
     }
 
     mesaJsonString = JSON.stringify(mesaJson, null, 4);
@@ -465,21 +509,29 @@ function preprocessMesaJsonForExport(mesaJsonString) {
   return mesaJsonString;
 }
 
-function getTemplateVariables(locationAutomationKey) {
-  let filepath = process.cwd() + '/template_variables.json';
+function getTemplateConfig(locationAutomationKey) {
+  let filepath = process.cwd() + '/config.json';
   if (!fs.existsSync(filepath)) {
     return null;
   }
 
   let contents = fs.readFileSync(filepath, 'utf8');
-  let templateVariables = JSON.parse(contents);
+  let config = JSON.parse(contents);
 
-  return templateVariables;
+  return config;
 }
 
 function injectTemplateVariables(mesaObject, templateVariables) {
   for (let templateVariable of templateVariables) {
     let step = mesaObject.config.outputs.find(object => object.key == templateVariable.key);
+    if (! step) {
+      step = mesaObject.config.inputs.find(object => object.key == templateVariable.key);
+    }
+    if (! step) {
+      console.error("Step not found: " + step);
+      process.exit();
+    }
+    console.log(pad("Template variable:", 22) + " - " + templateVariable.key + "-" + templateVariable.field);    
 
     // Splits i.e. metadata.message into parts
     let parts = templateVariable.field.split('.'); 
@@ -488,6 +540,8 @@ function injectTemplateVariables(mesaObject, templateVariables) {
       step[parts[0]] = templateVariable.value;
     } else if (parts.length == 2) {
       step[parts[0]][parts[1]] = templateVariable.value;
+    } else if (parts.length == 3) {
+      step[parts[0]][parts[1]][parts[2]] = templateVariable.value;
     } else {
       console.log("injectTemplateVariables Error: didn't parse field: " + templateVariable.field);
       process.exit();
@@ -539,6 +593,11 @@ function upload(filepath, cb) {
         filename: filename,
         code: contents
       }
+    }, function(data) {
+      if (cb) {
+        // console.log('Running callback');
+        cb(data);
+      }
     });
   } else if (filename.indexOf('mesa.json') !== -1) {
     contents = JSON.parse(contents);
@@ -577,6 +636,7 @@ function upload(filepath, cb) {
       }
       console.log('');
       if (cb) {
+        console.log('Running callback');
         cb(data);
       }
     });
@@ -703,7 +763,7 @@ function download(files, automation) {
 function createDirectories(filename) {
   const dir = path.dirname(filename);
   if (dir && !fs.existsSync(dir)) {
-    console.log(`Creating directory: ${dir}...`);
+    console.log(pad(`Creating directory:`, 22) + dir);
     fs.mkdirSync(dir, { recursive: true });
   }
 }
