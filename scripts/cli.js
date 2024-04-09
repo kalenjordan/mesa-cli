@@ -149,7 +149,7 @@ switch (cmd) {
     var watch = require('watch');
     program.force = 1;
     let timestamp = (new Date()).toLocaleDateString() + " " + (new Date()).toLocaleTimeString();
-    console.log(`${timestamp}: Watching ${dir}`);
+    logWithTimestamp(`Watching ${dir}`);
 
     watch.watchTree(
       dir,
@@ -179,7 +179,7 @@ switch (cmd) {
       utilsDir = parts[0] + 'template-utils/classes';  
     }
 
-    console.log(`${timestamp}: Watching ${utilsDir}`);
+    logWithTimestamp(`Watching ${utilsDir}`);
     watch.watchTree(utilsDir, 
       {
         filter: function(filename) {
@@ -201,6 +201,19 @@ switch (cmd) {
         }
       });
 
+      setTimeout(() => {
+        logWithTimestamp(`Copy Util.js and ShopifyUtil.js after starting to watch`);
+        let filepath = utilsDir + '/Util.js';
+        let filename = path.parse(filepath).base;
+        let destination = dir + '/' + filename;
+        fs.copyFileSync(filepath, destination);
+        
+        filepath = utilsDir + '/ShopifyUtil.js';
+        filename = path.parse(filepath).base;
+        destination = dir + '/' + filename;
+        fs.copyFileSync(filepath, destination);  
+      }, 1000);
+  
     break;
   
   case 'add-step':
@@ -476,7 +489,7 @@ function runExport(files) {
 
 function logWithTimestamp(message) {
   let timestamp = (new Date()).toLocaleDateString() + " " + (new Date()).toLocaleTimeString();
-  console.log(timestamp + ": " + message);
+  console.log(pad(timestamp + ": ", 22) + message);
 }
 
 function preprocessMesaJsonForExport(mesaJsonString) {
